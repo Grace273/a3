@@ -64,8 +64,8 @@ char *client_login(int client_fd)
 	// call helper
 	char *username = read_username(client_fd);
 
-	// TODO: this is not working
-	while (username == NULL)
+	// check if null username
+	while (username[0] == '\0')
 	{
 		sprintf(msg, "No username. Try Again.\r\n");
 		write(client_fd, msg, strlen(msg));
