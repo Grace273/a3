@@ -9,6 +9,7 @@
 #define PORT 54134
 #define MAX_QUEUE 5
 #define MAX_BUF 128
+#define MAX_CLIENTS 64
 
 typedef struct Client
 {
@@ -113,20 +114,112 @@ int main()
 		exit(1);
 	}
 
-	// TODO: create a linked list so we can store any number of clients and then turn the for loop into a while(1) loop
-	Client clients[2];
-	int client_socket;
-	for (int i = 0; i < 2; i++)
-	{
-		printf("Listening for connections...\n");
-		client_socket = accept_connection(listen_soc);
-		printf("Client connected!\n");
 
-		// add client to the array
-		clients[i].fd = client_socket;
-		// call helper so client can make up a username
-		char *name = client_login(client_socket);
-		strncpy(clients[i].username, name, sizeof(clients[i].username));
+	Client clients[64];
+	int num_clients = 0; 
+
+	// mark every slot as -1 to signify it as currently empty 
+	for(int i = 0; i < 64; i++) clients[i].fd = -1; 
+
+	// Keep track of open file descriptors (listen_soc, each client's fd)
+	fd_set master_set; 
+	FD_ZERO(&master_set);
+	FD_SET(listen_soc, &master_set);
+	int max_fd = listen_soc;
+
+	while(1)
+	{
+		// Select blocks until at least one fd ready, returns and tells you which fds are ready 
+		fd_set read_fds = master_set;
+
+		if( select(max_fd + 1, &read_fds, NULL, NULL, NULL) < 0)
+		{
+			perror("select");
+			break;
+		}
+
+		// new client is connecting 
+		if (FD_ISSET(listen_soc, &read_fds))
+		{
+			int new_fd = accept_connection(listen_soc);
+
+			// find an empty slot
+			for (int i = 0; i < 64; i++)
+			{
+				if (clients[i].fd == -1) 
+				{
+					clients[i].fd = new_fd;
+					clients[i].username[0] = '\0'; // start off with empty username
+					num_clients++;
+					break;
+				}
+			}
+
+			FD_SET(new_fd, &master_set);
+			if (new_fd > max_fd)
+				max_fd = new_fd;
+			
+			write(new_fd, "Enter username:\r\n", 17);
+		}
+
+		// check each client for incoming data
+		for (int i = 0; i < 64; i++)
+		{
+			// empty, no client 
+			if (clients[i].fd == -1) continue;
+
+			if (FD_ISSET(clients[i].fd, &read_fds))
+			{
+				char buf[MAX_BUF];
+				int n = read(clients[i].fd, buf, sizeof(buf) - 1);
+			
+				// client disconnected
+				if (n <= 0)
+				{
+					printf("%s disconected\n", clients[i].username);
+					FD_CLR(clients[i].fd, &master_set);
+					close(clients[i].fd);
+					clients[i].fd = -1;
+					clients[i].username[0] = '\0';
+					num_clients--;
+				}
+				else
+				{
+					buf[n] = '\0';
+					char *n1 = strchr(buf, '\m');
+					if (n1) *n1 = '\0';
+
+					if (clients[i].username[0] == '\0')
+					{
+						strncpy(clients[i].username, buf, 31);
+						char msg[MAX_BUF];
+						snprintf(msg, sizeof(msg), "Welcome, %s!\r\n", clients[i].username);
+						write(clients[i].fd, msg, strlen(msg));
+					}
+					else
+					{
+						char msg[MAX_BUF];
+						snprintf(msg, sizeof(msg), "%s: %s\r\n", clients[i].username, buf);
+						for(int j = 0; j < 64; j++)
+						{
+							if (clients[j].fd != -1 && clients[j].fd != clients[i].fd)
+							{
+								write(clients[j].fd, msg, strlen(msg));
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// printf("Listening for connections...\n");
+		// client_socket = accept_connection(listen_soc);
+		// printf("Client connected!\n");
+		// // add client to the array
+		// clients[i].fd = client_socket;
+		// // call helper so client can make up a username
+		// char *name = client_login(client_socket);
+		// strncpy(clients[i].username, name, sizeof(clients[i].username));
 	}
 
 	return 0;
