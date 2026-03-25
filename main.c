@@ -186,7 +186,7 @@ int main()
 				else
 				{
 					buf[n] = '\0';
-					char *n1 = strchr(buf, '\m');
+					char *n1 = strchr(buf, '\n');
 					if (n1) *n1 = '\0';
 
 					if (clients[i].username[0] == '\0')
