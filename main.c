@@ -212,14 +212,7 @@ int main()
 			}
 		}
 
-		// printf("Listening for connections...\n");
-		// client_socket = accept_connection(listen_soc);
-		// printf("Client connected!\n");
-		// // add client to the array
-		// clients[i].fd = client_socket;
-		// // call helper so client can make up a username
-		// char *name = client_login(client_socket);
-		// strncpy(clients[i].username, name, sizeof(clients[i].username));
+
 	}
 
 	return 0;
