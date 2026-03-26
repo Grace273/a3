@@ -25,6 +25,8 @@ typedef struct Client
 	int channel; // index into channels[], -1 = no channel
 } Client;
 
+Channel channels[MAX_CHANNELS];
+
 int accept_connection(int listen_soc)
 {
 	// just following last week's worksheet
