@@ -11,6 +11,11 @@
 #define MAX_BUF 128
 #define MAX_CLIENTS 64
 
+typedef struct Channel {
+    char name[MAX_CHANNEL_NAME];
+    int active;
+} Channel;
+
 typedef struct Client
 {
 	int fd;
