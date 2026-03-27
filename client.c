@@ -5,6 +5,8 @@
 #include "channel.h"
 #include "config.h"
 
+#define MAX_MSG_BUF 300
+
 int prompt_login(int client_fd)
 {
     if (write(client_fd, "Enter user name:\r\n", 19) == -1)
@@ -34,7 +36,7 @@ int remove_client(Client *client)
 // helper for handle_client_message
 int handle_command(char *buf, Channel *channel_arr, Client *client)
 {
-    char msg[MAX_BUF];
+    char msg[MAX_MSG_BUF];
     char cmd[32], arg[64];
     int parsed = sscanf(buf + 1, "%31s %63s", cmd, arg);
 
@@ -51,7 +53,7 @@ int handle_command(char *buf, Channel *channel_arr, Client *client)
         }
 
         client->channel = ch;
-        snprintf(msg, sizeof(msg), "-------------------------Joined #%s------------------------\n(You can't see previous messages)\nChat:\r\n", arg);
+        snprintf(msg, sizeof(msg), "----Joined #%s----\n(You can't see previous messages)\nChat:\r\n", arg);
 
         if (write(client->fd, msg, strlen(msg)) == -1)
         {
@@ -93,7 +95,7 @@ int handle_message(char *buf, char *msg, Channel *channel_arr, Client *client, C
     }
     else
     {
-        snprintf(msg, MAX_BUF, "[#%s] %s: %s\r\n",
+        snprintf(msg, MAX_MSG_BUF, "[#%s] %s: %s\r\n",
                  channel_arr[client->channel].name,
                  client->username, buf); // format message with channel and username
 
@@ -116,7 +118,7 @@ int handle_message(char *buf, char *msg, Channel *channel_arr, Client *client, C
 
 int handle_client_message(int bytes_read, char *buf, Channel *channel_arr, Client *clients, Client *client)
 {
-    char msg[MAX_BUF];
+    char msg[MAX_MSG_BUF];
 
     buf[bytes_read] = '\0';
     buf[strcspn(buf, "\r\n")] = '\0';
@@ -146,8 +148,6 @@ int handle_client_message(int bytes_read, char *buf, Channel *channel_arr, Clien
 
         strncpy(client->username, buf, 31);
         client->username[31] = '\0';
-
-        printf("DEBUG: Set username to '%s'\n", client->username);
 
         snprintf(msg, MAX_BUF, "\nWelcome, %s!\nBefore you chat, join/create a channel by typing /join <channel name>:\r\n", client->username);
         if (write(client->fd, msg, strlen(msg)) == -1)
