@@ -33,28 +33,87 @@ int remove_client(Client *client)
     return 0;
 }
 
-// helper for handle_client_message
-int handle_command(char *buf, Channel *channel_arr, Client *client)
+// returns a client pointer with arg username exists, NULL otherwise
+// helper for join_dm
+Client *find_client(char *arg, Client *clients)
+{
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (strcmp(clients[i].username, arg) == 0)
+            return &clients[i];
+    }
+
+    return NULL;
+}
+
+// helper for handle_command
+int join_channel(char *arg, Channel *channels, Client *client)
 {
     char msg[MAX_MSG_BUF];
-    char cmd[32], arg[64];
-    int parsed = sscanf(buf + 1, "%31s %63s", cmd, arg);
 
-    if (strcmp(cmd, "join") == 0 && parsed == 2)
+    // remove CR/LF from arg
+    arg[strcspn(arg, "\r\n")] = '\0';
+
+    int ch = find_or_create_channel(arg, channels);
+    if (ch == -1)
     {
-        // remove CR/LF from arg
-        arg[strcspn(arg, "\r\n")] = '\0';
-
-        int ch = find_or_create_channel(arg, channel_arr);
-        if (ch == -1)
+        if (write(client->fd, "Error: too many channels.\r\n", 26) == -1)
         {
-            write(client->fd, "Error: too many channels.\r\n", 26);
+            perror("write");
+            // close fd?
             return -1;
         }
+        return -1;
+    }
 
-        client->channel = ch;
-        snprintf(msg, sizeof(msg), "----Joined #%s----\n(You can't see previous messages)\nChat:\r\n", arg);
+    client->channel = ch;
+    client->dm_target = NULL;
 
+    snprintf(msg, MAX_BUF, "----Joined #%s----\n(You can't see previous messages)\nChat:\r\n", arg);
+
+    if (write(client->fd, msg, strlen(msg)) == -1)
+    {
+        perror("write");
+        // close fd?
+        return -1;
+    }
+
+    return 0;
+}
+
+// helper for handle_command
+int join_dm(char *arg, Client *clients, Client *client)
+{
+    char msg[MAX_MSG_BUF];
+
+    // remove CR/LF from arg
+    arg[strcspn(arg, "\r\n")] = '\0';
+    Client *target_client = find_client(arg, clients);
+
+    if (target_client == NULL)
+    {
+        snprintf(msg, MAX_BUF, "No such user.\r\n");
+        if (write(client->fd, msg, strlen(msg)) == -1)
+        {
+            perror("write");
+            return -1;
+        }
+    }
+    else if (strcmp(target_client->username, client->username) == 0)
+    {
+        snprintf(msg, MAX_BUF, "You can't message yourself.\r\n");
+        if (write(client->fd, msg, strlen(msg)) == -1)
+        {
+            perror("write");
+            return -1;
+        }
+    }
+    else
+    {
+        client->channel = -1;
+        client->dm_target = target_client;
+
+        snprintf(msg, MAX_BUF, "\n----Private Message with: %s----\n(You can't see previous messages)\nChat:\r\n", arg);
         if (write(client->fd, msg, strlen(msg)) == -1)
         {
             perror("write");
@@ -62,11 +121,38 @@ int handle_command(char *buf, Channel *channel_arr, Client *client)
             return -1;
         }
     }
+
+    return 0;
+}
+
+// helper for handle_client_message
+int handle_command(char *buf, Channel *channel_arr, Client *clients, Client *client)
+{
+    char msg[MAX_BUF];
+    char cmd[32], arg[64];
+    int parsed = sscanf(buf + 1, "%31s %63s", cmd, arg);
+
+    if (strcmp(cmd, "join") == 0 && parsed == 2)
+    {
+        if (join_channel(arg, channel_arr, client) == -1)
+        {
+            return -1;
+        }
+    }
+    else if (strcmp(cmd, "dm:") == 0)
+    {
+        if (join_dm(arg, clients, client) == -1)
+        {
+            return -1;
+        }
+    }
     else if (strcmp(cmd, "leave") == 0)
     {
         client->channel = -1;
+        client->dm_target = NULL;
 
-        if (write(client->fd, "Left channel.\r\n", 15) == -1)
+        snprintf(msg, MAX_BUF, "Left chat.\r\n");
+        if (write(client->fd, msg, strlen(msg)) == -1)
         {
             perror("write");
             // close fd?
@@ -89,11 +175,17 @@ int handle_command(char *buf, Channel *channel_arr, Client *client)
 // helper for handle_client_message
 int handle_message(char *buf, char *msg, Channel *channel_arr, Client *client, Client *clients)
 {
-    if (client->channel == -1)
+    if (client->channel == -1 && client->dm_target == NULL)
     {
-        write(client->fd, "\nJoin a channel first. Use /join <name>:\r\n", 42);
+        snprintf(msg, MAX_BUF, "\nJoin a chat first. Use /join <name> to join a channel or /dm: <username> for private msgs:\r\n");
+        if (write(client->fd, msg, strlen(msg)) == -1)
+        {
+            perror("write");
+            // close fd?
+            return -1;
+        }
     }
-    else
+    else if (client->channel != -1)
     {
         snprintf(msg, MAX_MSG_BUF, "[#%s] %s: %s\r\n",
                  channel_arr[client->channel].name,
@@ -112,7 +204,39 @@ int handle_message(char *buf, char *msg, Channel *channel_arr, Client *client, C
             }
         }
     }
+    else if (client->dm_target != NULL)
+    {
+        // check if target client is in the private chat with client already
+        if (client->dm_target->dm_target != NULL && strcmp((client->dm_target)->dm_target->username, client->username) == 0)
+        {
+            snprintf(msg, MAX_BUF, "[Private Chat] %s: %s\r\n",
+                     client->username, buf); // format message with name
+            if (write(client->dm_target->fd, msg, strlen(msg)) == -1)
+            {
+                perror("write");
+                // close fd?
+                return -1;
+            }
+        }
+        else
+        {
+            // notify target client that they're being poked
+            snprintf(msg, MAX_BUF, "** %s sent you a private message. /dm: %s to go to the chat. **\r\n", client->username, client->username);
+            if (write(client->dm_target->fd, msg, strlen(msg)) == -1)
+            {
+                perror("write");
+                // close fd?
+                return -1;
+            }
+        }
+    }
+    // mostly for debugging
+    else
+    {
+        fprintf(stdout, "ERROR: CLIENT DM AND CHANNEL BOTH OPEN\n");
+    }
 
+    fprintf(stdout, "done\n");
     return 0;
 }
 
@@ -149,7 +273,7 @@ int handle_client_message(int bytes_read, char *buf, Channel *channel_arr, Clien
         strncpy(client->username, buf, 31);
         client->username[31] = '\0';
 
-        snprintf(msg, MAX_BUF, "\nWelcome, %s!\nBefore you chat, join/create a channel by typing /join <channel name>:\r\n", client->username);
+        snprintf(msg, MAX_BUF, "\nWelcome, %s!\nBefore you chat, Use /join <name> to join a channel or /dm: <username> for private msgs:\r\n", client->username);
         if (write(client->fd, msg, strlen(msg)) == -1)
         {
             perror("write");
@@ -161,7 +285,7 @@ int handle_client_message(int bytes_read, char *buf, Channel *channel_arr, Clien
         // check for command input
         if (buf[0] == '/')
         {
-            if (handle_command(buf, channel_arr, client) == -1)
+            if (handle_command(buf, channel_arr, clients, client) == -1)
             {
                 // close fd?
                 fprintf(stderr, "handle_command\n");
@@ -169,7 +293,8 @@ int handle_client_message(int bytes_read, char *buf, Channel *channel_arr, Clien
             }
         }
         else
-        { // regular message - broadcast to channel
+        { // regular message
+
             if (handle_message(buf, msg, channel_arr, client, clients) == -1)
             {
                 // close fd?
