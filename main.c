@@ -27,7 +27,7 @@ int accept_connection(int listen_soc, Client *clients)
 	}
 
 	// find an empty slot
-	for (int i = 0; i < 64; i++)
+	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
 		if (clients[i].fd == -1)
 		{
@@ -117,32 +117,55 @@ int main()
 		// new client is connecting
 		if (FD_ISSET(listen_soc, &read_fds))
 		{
-			int new_fd = accept_connection(listen_soc, clients);
-			if (new_fd == -1)
+			if (num_clients >= MAX_CLIENTS)
 			{
-				// TODO: error handling, ill put exit for now
-				// close fd?
-				fprintf(stderr, "accept_connection");
-				exit(1);
+				// briefly accept to get the fd so we can notify and close it
+				int tmp = accept(listen_soc, NULL, NULL);
+				if (tmp != -1){
+					write(tmp, "Server is full. Try again later.\n", 33);
+					close(tmp);
+				}
 			}
-
-			if (prompt_login(new_fd) == -1)
+			else
 			{
-				// TODO: error handling, ill put exit for now
-				// close fd?
-				fprintf(stderr, "prompt_login");
-				exit(1);
+				int new_fd = accept_connection(listen_soc, clients);
+				if (new_fd == -1)
+				{
+					// If this fails, not a major issue for the server. So only skip this client's connection
+					// Keep server running
+					fprintf(stderr, "Failed to accept connection.");
+				}
+
+				else if (prompt_login(new_fd) == -1)
+				{
+					// If this fails, means that only an individual client failed.
+					// Only close the CLIENT's fd and keep server running.
+					fprintf(stderr, "prompt_login");
+					close(new_fd);
+					// clean up the slot that accept_connection filled in
+					for (int i = 0; i < MAX_CLIENTS; i++)
+					{
+						if(clients[i].fd == new_fd)
+						{
+							clients[i].fd = -1;
+							break;
+						}
+					}
+				}
+
+				else
+				{
+					num_clients++;
+					FD_SET(new_fd, &master_set);
+					if (new_fd > max_fd)
+					max_fd = new_fd;
+				}
 			}
-
-			num_clients++;
-
-			FD_SET(new_fd, &master_set);
-			if (new_fd > max_fd)
-				max_fd = new_fd;
+			
 		}
 
 		// check each client for incoming data
-		for (int i = 0; i < 64; i++)
+		for (int i = 0; i < MAX_CLIENTS; i++)
 		{
 			// empty, no client
 			if (clients[i].fd == -1)
@@ -163,10 +186,13 @@ int main()
 
 					if (remove_client(&clients[i]) == -1)
 					{
-						// TODO: error handling, ill put exit for now
-						// close fd?
-						exit(1);
+						// Cleaning up client fails
+						// Close its fd to prevent leaking client's fd 
+						fprintf(stderr, "remove_client");
+						close(clients[i].fd);
+						clients[i].fd = -1;
 					}
+
 					num_clients--;
 				}
 				else
@@ -174,9 +200,11 @@ int main()
 
 					if (handle_client_message(n, buf, channels, clients, &clients[i]) == -1)
 					{
-						// TODO: error handling, ill put exit for now
-						// close fd?
-						exit(1);
+						// Only this client's message encountered an error
+						// Remove this client, keep server running
+						FD_CLR(clients[i].fd, &master_set);
+						remove_client(&clients[i]);
+						num_clients--;
 					}
 				}
 			}
