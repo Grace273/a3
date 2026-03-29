@@ -125,13 +125,16 @@ int join_dm(char *arg, Client *clients, Client *client)
     return 0;
 }
 
+// helper for handle_command
+
 // helper for handle_client_message
 int handle_command(char *buf, Channel *channel_arr, Client *clients, Client *client)
 {
     char msg[MAX_MSG_BUF];
     char cmd[32], arg[64];
     int parsed = sscanf(buf + 1, "%31s %63s", cmd, arg);
-
+    fprintf(stdout, "DEBUG parsed=%d cmd='%s'\n", parsed, cmd);
+    
     if (strcmp(cmd, "join") == 0 && parsed == 2)
     {
         if (join_channel(arg, channel_arr, client) == -1)
@@ -167,6 +170,47 @@ int handle_command(char *buf, Channel *channel_arr, Client *clients, Client *cli
             perror("write");
             // close fd?
             return -1;
+        }
+    }
+    else if (strcmp(cmd, "who") == 0)
+    {
+        // case where client isnt in a channel or dm
+        if (client->channel == -1) 
+        {
+            snprintf(msg, MAX_MSG_BUF, "You are not in a channel. Use /join <name> to join one.\r\n");
+            if (write(client->fd, msg, strlen(msg)) == -1)
+            {
+                perror("write");
+                return -1;
+            }
+            return 0;
+        }
+
+        snprintf(msg, MAX_MSG_BUF, "Users in channel %s:\r\n", channel_arr[client->channel].name);
+        if (write(client->fd, msg, strlen(msg)) == -1)
+        {
+            perror("write");
+            return -1;
+        }
+        // loop thru all clients and list those in the same channel as client
+        for (int i = 0; i < MAX_CLIENTS; i++)
+        {
+            if (clients[i].fd != -1 && clients[i].channel == client->channel)
+            {
+                if (clients[i].fd == client->fd) 
+                {
+                    snprintf(msg, MAX_MSG_BUF, " - %s (you)\r\n", clients[i].username);
+                }
+                else
+                {
+                    snprintf(msg, MAX_MSG_BUF, " - %s\r\n", clients[i].username);
+                }
+                if (write(client->fd, msg, strlen(msg)) == -1)
+                {
+                    perror("write");
+                    return -1;
+                }
+            }
         }
     }
     else
