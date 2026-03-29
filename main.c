@@ -86,12 +86,13 @@ int main()
 	Channel channels[MAX_CHANNELS];
 	int num_clients = 0;
 
-	// mark every slot as -1 to signify it as currently empty and no channel
+	// mark every slot as -1 to signify it as currently empty and no channel and no target client for private message
 	memset(channels, 0, sizeof(channels));
 	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
 		clients[i].fd = -1;
 		clients[i].channel = -1;
+		clients[i].dm_target = NULL;
 	}
 
 	// Keep track of open file descriptors (listen_soc, each client's fd)

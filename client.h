@@ -5,7 +5,8 @@ typedef struct Client
 {
     int fd;
     char username[32];
-    int channel; // index into channels[], -1 = no channel
+    int channel;              // index into channels[], -1 = no channel
+    struct Client *dm_target; // targeted user for private message, NULL = no target
 } Client;
 
 // forward declaration to refer to Channel in function declarations
