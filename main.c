@@ -201,10 +201,8 @@ int main()
 					if (handle_client_message(n, buf, channels, clients, &clients[i]) == -1)
 					{
 						// Only this client's message encountered an error
-						// Remove this client, keep server running
-						FD_CLR(clients[i].fd, &master_set);
-						remove_client(&clients[i]);
-						num_clients--;
+						// Just skip this client and keep client connected
+						fprintf(stderr, "handle_client_message");
 					}
 				}
 			}
