@@ -13,7 +13,6 @@ typedef struct Client
 typedef struct Channel Channel;
 
 int prompt_login(int client_fd);
-int remove_client(Client *client);
 int handle_client_message(int bytes_read, char *buf, Channel *channel_arr, Client *client_arr, Client *client);
 
 #endif
