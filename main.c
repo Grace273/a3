@@ -82,7 +82,7 @@ int main()
 	}
 
 	// prepare for connections
-	Client clients[64];
+	Client clients[MAX_CLIENTS];
 	Channel channels[MAX_CHANNELS];
 	int num_clients = 0;
 
