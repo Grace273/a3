@@ -24,3 +24,27 @@ int find_or_create_channel(const char *name, Channel *channels)
     }
     return -1; // full
 }
+
+
+int list_active_channels(Channel *channels, int client_fd)
+{
+    char buf[MAX_BUF];
+    int offset = 0;
+
+    offset += snprintf(buf + offset, sizeof(buf) - offset, "Active channels:\n");
+
+    // append each active channel name to buffer
+    for (int i = 0; i < MAX_CHANNELS; i++)
+    {
+        if (channels[i].active)
+            offset += snprintf(buf + offset, sizeof(buf) - offset, "  - %s\n", channels[i].name);
+    }
+
+    // send the full buffer to the client
+    if (write(client_fd, buf, offset) == -1)
+    {
+        perror("write");
+        return -1;
+    }
+    return 0;
+}

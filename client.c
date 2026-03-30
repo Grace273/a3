@@ -134,6 +134,8 @@ int handle_command(char *buf, Channel *channel_arr, Client *clients, Client *cli
     char cmd[32], arg[64];
     int parsed = sscanf(buf + 1, "%31s %63s", cmd, arg);
     fprintf(stdout, "DEBUG parsed=%d cmd='%s'\n", parsed, cmd);
+    fprintf(stdout, "DEBUG list check: %d\n", strcmp(cmd, "list")); // add this
+    fprintf(stdout, "DEBUG parsed=%d cmd='%s'\n", parsed, cmd);
     
     if (strcmp(cmd, "join") == 0 && parsed == 2)
     {
@@ -211,6 +213,14 @@ int handle_command(char *buf, Channel *channel_arr, Client *clients, Client *cli
                     return -1;
                 }
             }
+        }
+    }
+    else if (strcmp(cmd, "list") == 0)
+    {
+        if (list_active_channels(channel_arr, client->fd) == -1)
+        {
+            fprintf(stderr, "list_channels\n");
+            return -1;
         }
     }
     else
