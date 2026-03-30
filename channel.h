@@ -9,4 +9,7 @@ typedef struct Channel
 } Channel;
 
 int find_or_create_channel(const char *name, Channel *channels);
+
+int list_active_channels(Channel *channels, int client_fd);
+
 #endif
