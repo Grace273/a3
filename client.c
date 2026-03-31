@@ -334,6 +334,16 @@ int handle_client_message(int bytes_read, char *buf, Channel *channel_arr, Clien
             return 0; // leave username empty so next message retries
         }
 
+        if (find_client(buf, clients) != NULL) 
+        {
+            if(write(client->fd, "Username is already taken. Enter different user name:\r\n", 42) == -1)
+            {
+                perror("write");
+                return -1;
+            }
+            return 0;
+        }
+        
         strncpy(client->username, buf, 31);
         client->username[31] = '\0';
 
