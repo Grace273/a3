@@ -25,11 +25,11 @@ int find_or_create_channel(const char *name, Channel *channels)
     return -1; // full
 }
 
-
 int list_active_channels(Channel *channels, int client_fd)
 {
     char buf[MAX_BUF];
     int offset = 0;
+    int any_active = 0;
 
     offset += snprintf(buf + offset, sizeof(buf) - offset, "Active channels:\n");
 
@@ -37,7 +37,22 @@ int list_active_channels(Channel *channels, int client_fd)
     for (int i = 0; i < MAX_CHANNELS; i++)
     {
         if (channels[i].active)
+        {
             offset += snprintf(buf + offset, sizeof(buf) - offset, "  - %s\n", channels[i].name);
+
+            // check if channel name truncated and offset is past buffer now
+            if (offset >= (int)sizeof(buf))
+                offset = (int)sizeof(buf) - 1;
+
+            any_active++;
+        }
+    }
+
+    if (!any_active)
+    {
+        offset += snprintf(buf + offset, sizeof(buf) - offset, " No active channels, start a channel with /join <name>\n");
+        if (offset >= (int)sizeof(buf))
+            offset = (int)sizeof(buf) - 1;
     }
 
     // send the full buffer to the client

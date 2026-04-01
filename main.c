@@ -40,6 +40,59 @@ int accept_connection(int listen_soc, Client *clients)
 	return client_socket;
 }
 
+int remove_client(Client *client, Client *clients)
+{
+	printf("%s disconected\n", client->username);
+
+	// notify other clients
+	char msg[MAX_BUF];
+
+	snprintf(msg, MAX_BUF, "%s has disconnected.\r\n", client->username);
+
+	for (int j = 0; j < MAX_CLIENTS; j++)
+	{
+		if (clients[j].fd != -1 && clients[j].fd != client->fd &&
+			((client->channel != -1 && clients[j].channel == client->channel) ||
+			 clients[j].dm_target == client)) // only send to clients in same channel (if they are in a channel) or in the private chat
+		{
+			if (write(clients[j].fd, msg, strlen(msg)) == -1)
+			{
+				perror("write");
+				// don't return, finish clean up
+			}
+
+			// remove any clients from private chat with disconnected client
+			if (clients[j].dm_target == client)
+			{
+				// reset clients[j]'s dm_target
+				clients[j].dm_target = NULL;
+
+				snprintf(msg, MAX_BUF, "You have been disconnected from the private chat.\r\n");
+
+				if (write(clients[j].fd, msg, strlen(msg)) == -1)
+				{
+					perror("write");
+					// don't return, finish clean up
+				}
+			}
+		}
+	}
+
+	// close and reset client attributes
+	if (close(client->fd) == -1)
+	{
+		perror("close");
+		// don't return, finish clean up
+	}
+
+	client->fd = -1;
+	client->channel = -1;
+	client->dm_target = NULL;
+	client->username[0] = '\0';
+
+	return 0;
+}
+
 int main()
 {
 	// create listen soc for server
@@ -121,7 +174,8 @@ int main()
 			{
 				// briefly accept to get the fd so we can notify and close it
 				int tmp = accept(listen_soc, NULL, NULL);
-				if (tmp != -1){
+				if (tmp != -1)
+				{
 					write(tmp, "Server is full. Try again later.\n", 33);
 					close(tmp);
 				}
@@ -145,7 +199,7 @@ int main()
 					// clean up the slot that accept_connection filled in
 					for (int i = 0; i < MAX_CLIENTS; i++)
 					{
-						if(clients[i].fd == new_fd)
+						if (clients[i].fd == new_fd)
 						{
 							clients[i].fd = -1;
 							break;
@@ -158,10 +212,9 @@ int main()
 					num_clients++;
 					FD_SET(new_fd, &master_set);
 					if (new_fd > max_fd)
-					max_fd = new_fd;
+						max_fd = new_fd;
 				}
 			}
-			
 		}
 
 		// check each client for incoming data
@@ -184,15 +237,7 @@ int main()
 				{
 					FD_CLR(clients[i].fd, &master_set);
 
-					if (remove_client(&clients[i]) == -1)
-					{
-						// Cleaning up client fails
-						// Close its fd to prevent leaking client's fd 
-						fprintf(stderr, "remove_client");
-						close(clients[i].fd);
-						clients[i].fd = -1;
-					}
-
+					remove_client(&clients[i], clients);
 					num_clients--;
 				}
 				else
@@ -200,9 +245,11 @@ int main()
 
 					if (handle_client_message(n, buf, channels, clients, &clients[i]) == -1)
 					{
-						// Only this client's message encountered an error
-						// Just skip this client and keep client connected
-						fprintf(stderr, "handle_client_message");
+						// This means there was a write failure somewhere, connection must be dead
+						fprintf(stderr, "handle_client_message\n");
+						FD_CLR(clients[i].fd, &master_set);
+						remove_client(&clients[i], clients);
+						num_clients--;
 					}
 				}
 			}
