@@ -9,7 +9,9 @@
 #include "channel.h"
 #include "config.h"
 
-#define PORT 54134
+#ifndef PORT
+#define PORT 50995
+#endif
 #define MAX_QUEUE 5
 
 int accept_connection(int listen_soc, Client *clients)
