@@ -10,7 +10,7 @@
 #include "config.h"
 
 #ifndef PORT
-#define PORT 50995
+#define PORT 54134
 #endif
 #define MAX_QUEUE 5
 
