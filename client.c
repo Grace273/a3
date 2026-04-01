@@ -308,7 +308,7 @@ int handle_client_message(int bytes_read, char *buf, Channel *channel_arr, Clien
 
         if (find_client(buf, clients) != NULL) 
         {
-            if(write(client->fd, "Username is already taken. Enter different user name:\r\n", 42) == -1)
+            if(write(client->fd, "Username is already taken. Enter different user name:\r\n", 55) == -1)
             {
                 perror("write");
                 return -1;
